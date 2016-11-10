@@ -13,11 +13,68 @@
 
 namespace OSS {
 namespace Net {
-  bool rtnl_get_route(RTNLRoutes& routes, bool includeLoopBack)
+
+
+bool rtnl_get_route(RTNLRoutes& routes, bool includeLoopBack)
+{
+  std::string target;
+  return rtnl_get_route(routes, target, includeLoopBack);
+}
+
+bool rtnl_get_source(const RTNLRoutes& routes, std::string& source, const std::string& target, bool includeLoopBack)
+{
+  std::string gateway;
+  for (RTNLRoutes::const_iterator iter = routes.begin(); iter != routes.end(); iter++)
   {
-    std::string target;
-    return rtnl_get_route(routes, target, includeLoopBack);
+    if (!iter->source.empty())
+    {
+      if (!includeLoopBack && iter->device == "lo")
+      {
+        continue;
+      }
+      //
+      // Check if the destination matches
+      //
+      if (OSS::socket_address_cidr_verify(target, iter->destination))
+      {
+        source = iter->source;
+        return true;
+      }
+    }
+    
+    if (gateway.empty() && !iter->gateway.empty())
+    {
+      gateway = iter->gateway;
+    }
   }
+  
+  //
+  // We did not get the source using destinations.  Use the first item with a gateway
+  //
+  
+  for (RTNLRoutes::const_iterator iter = routes.begin(); iter != routes.end(); iter++)
+  {
+    if (!iter->source.empty())
+    {
+      if (!includeLoopBack && iter->device == "lo")
+      {
+        continue;
+      }
+      //
+      // Check if the gateway matches
+      //
+      if (OSS::socket_address_cidr_verify(gateway, iter->destination))
+      {
+        source = iter->source;
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+
 } }
 
 #if OSS_PLATFORM_LINUX
@@ -202,64 +259,9 @@ bool rtnl_get_route(RTNLRoutes& routes, const std::string& target, bool includeL
 }
 
 
-bool rtnl_get_source(const RTNLRoutes& routes, std::string& source, const std::string& target, bool includeLoopBack)
-{
-  std::string gateway;
-  for (RTNLRoutes::const_iterator iter = routes.begin(); iter != routes.end(); iter++)
-  {
-    if (!iter->source.empty())
-    {
-      if (!includeLoopBack && iter->device == "lo")
-      {
-        continue;
-      }
-      //
-      // Check if the destination matches
-      //
-      if (OSS::socket_address_cidr_verify(target, iter->destination))
-      {
-        source = iter->source;
-        return true;
-      }
-    }
-    
-    if (gateway.empty() && !iter->gateway.empty())
-    {
-      gateway = iter->gateway;
-    }
-  }
-  
-  //
-  // We did not get the source using destinations.  Use the first item with a gateway
-  //
-  
-  for (RTNLRoutes::const_iterator iter = routes.begin(); iter != routes.end(); iter++)
-  {
-    if (!iter->source.empty())
-    {
-      if (!includeLoopBack && iter->device == "lo")
-      {
-        continue;
-      }
-      //
-      // Check if the gateway matches
-      //
-      if (OSS::socket_address_cidr_verify(gateway, iter->destination))
-      {
-        source = iter->source;
-        return true;
-      }
-    }
-  }
-  
-  return false;
-}
-
 } } // OSS::Net
 
 #elif OSS_PLATFORM_MAC_OS_X
-
-#pragma message "rtnetlink not available for Mac OSX"
 
 #include <stdint.h>
 #include <sys/param.h>
@@ -812,10 +814,7 @@ bool rtnl_get_route(RTNLRoutes& routes, const std::string& target, bool includeL
   ntreestuff();
   return true;
 }
-bool rtnl_get_source(const RTNLRoutes& routes, std::string& source, const std::string& target, bool includeLoopBack)
-{
-  return true;
-}
+
 
 } } // OSS::NET
 
